@@ -20,3 +20,141 @@ clean_rooms:
       example: "Downstairs"
       selector:
         text:
+
+start_task:
+  name: Start task
+  description: Start a saved Tapo task by id or name. On RV50 this starts a quick task. On RV30 this runs the saved customization rule locally.
+  target:
+    entity:
+      domain: vacuum
+      integration: tapo_rv30
+  fields:
+    task_id:
+      name: Task id
+      description: Numeric task id to start.
+      required: false
+      example: 3
+      selector:
+        number:
+          min: 1
+          max: 999
+          mode: box
+    task_name:
+      name: Task name
+      description: Task name to start. Exact match is preferred; partial matches are accepted.
+      required: false
+      example: "Tägliche Reinigung OG"
+      selector:
+        text:
+
+save_task:
+  name: Save task
+  description: Create or update a saved task. The payload can be copied from the vacuum entity's task attributes and edited before submitting.
+  target:
+    entity:
+      domain: vacuum
+      integration: tapo_rv30
+  fields:
+    task_api:
+      name: Task API
+      description: Optional override for the task family. Defaults to the connected robot model.
+      required: false
+      example: "quick_task"
+      selector:
+        select:
+          options:
+            - quick_task
+            - custom_rule
+    task:
+      name: Task payload
+      description: Full task payload. Use `group_name` or `rule_name`, or the shorthand `name`; use `group_id` or `rule_id`, or the shorthand `task_id`.
+      required: true
+      selector:
+        object:
+
+delete_task:
+  name: Delete task
+  description: Delete a saved Tapo task by id or name.
+  target:
+    entity:
+      domain: vacuum
+      integration: tapo_rv30
+  fields:
+    task_id:
+      name: Task id
+      description: Numeric task id to delete.
+      required: false
+      example: 3
+      selector:
+        number:
+          min: 1
+          max: 999
+          mode: box
+    task_name:
+      name: Task name
+      description: Task name to delete. Exact match is preferred; partial matches are accepted.
+      required: false
+      example: "TMP HA"
+      selector:
+        text:
+
+reorder_tasks:
+  name: Reorder tasks
+  description: Reorder saved quick tasks by task id. This is only supported on quick-task robots such as the RV50 family.
+  target:
+    entity:
+      domain: vacuum
+      integration: tapo_rv30
+  fields:
+    task_ids:
+      name: Task ids
+      description: Ordered list of task ids.
+      required: true
+      example: [3, 2, 1]
+      selector:
+        object:
+
+set_robot_setting:
+  name: Set robot setting
+  description: Update a model-specific robot setting. For boolean or integer settings, `value` can be a scalar; for complex settings such as DND, dust collection, dry mop, back wash, or valley charging, pass an object that will be merged onto the current setting.
+  target:
+    entity:
+      domain: vacuum
+      integration: tapo_rv30
+  fields:
+    setting:
+      name: Setting key
+      description: Internal setting key exposed by the integration.
+      required: true
+      example: "child_lock"
+      selector:
+        select:
+          options:
+            - ai_avoid
+            - area_unit
+            - automatic_remopping
+            - back_wash_mode
+            - carpet_auto_boost
+            - carpet_clean
+            - carpet_default_value
+            - carpet_threshold
+            - child_lock
+            - clean_along_floor
+            - cliff_detect_mode
+            - continue_threshold
+            - cut_hair_mode
+            - do_not_disturb
+            - dry_mop_mode
+            - dust_collection
+            - extended_mopping
+            - pet_area_deep_info
+            - pet_area_deep_switch
+            - sweep_walk
+            - valley_charging_time
+            - volume
+    value:
+      name: Value
+      description: Bool, number, string, or object payload depending on the setting.
+      required: true
+      selector:
+        object:

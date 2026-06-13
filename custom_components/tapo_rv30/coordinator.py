@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from .const import (
     DOMAIN,
+    FEATURE_INTERVAL,
     FAST_INTERVAL,
     MAP_INTERVAL,
     ROOM_PALETTE,
@@ -19,7 +20,7 @@ from .const import (
     UNKNOWN_COLOR,
     FLOOR_COLOR,
 )
-from .tpap import TapoVacuumClient
+from .tpap import SETTING_DEFINITIONS, TapoVacuumClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -169,22 +170,31 @@ class TapoCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=timedelta(seconds=FAST_INTERVAL),
         )
-        self.client          = client
-        self._map_tick       = 0      # counts update cycles; refresh map every N
-        self._map_cycles     = MAP_INTERVAL // FAST_INTERVAL
+        self.client = client
+        self._map_tick = 0  # counts update cycles; refresh map every N
+        self._map_cycles = MAP_INTERVAL // FAST_INTERVAL
+        self._feature_tick = 0
+        self._feature_cycles = FEATURE_INTERVAL // FAST_INTERVAL
         self.map_image_bytes: bytes | None = None
-        self.rooms:  list[dict] = []   # current rooms (area_list, type==room)
-        self.map_id: int | None = None # current map_id
-        self.device_name:  str = "Tapo RV30"
-        self._name_fetched = False
+        self.rooms: list[dict] = []  # current rooms (area_list, type==room)
+        self.map_id: int | None = None  # current map_id
+        self.device_current_map_id: int | None = None
+        self.available_maps: list[dict[str, Any]] = []
+        self.selected_map_id: int | None = None
+        self.device_name: str = "Tapo Robot Vacuum"
+        self.device_model: str = "Tapo Robot Vacuum"
+        self.device_info_raw: dict[str, Any] = {}
+        self.component_list: list[dict[str, Any]] = []
+        self.task_api: str | None = None
+        self.tasks: list[dict[str, Any]] = []
+        self.selected_task_id: int | None = None
+        self.supported_settings: dict[str, dict[str, Any]] = {}
+        self._device_bootstrapped = False
 
     async def _async_update_data(self) -> dict[str, Any]:
-        if not self._name_fetched:
+        if not self._device_bootstrapped:
             try:
-                self.device_name = await self.hass.async_add_executor_job(
-                    self.client.get_nickname
-                )
-                self._name_fetched = True
+                await self.hass.async_add_executor_job(self._bootstrap_device_context)
             except Exception:
                 pass
 
@@ -203,6 +213,15 @@ class TapoCoordinator(DataUpdateCoordinator):
 
         # Refresh map on first load and every MAP_INTERVAL seconds
         self._map_tick += 1
+        self._feature_tick += 1
+
+        if self._feature_tick >= self._feature_cycles:
+            self._feature_tick = 0
+            try:
+                await self.hass.async_add_executor_job(self._refresh_model_state)
+            except Exception as exc:
+                _LOGGER.debug("Model state refresh failed: %s", exc)
+
         if self.map_image_bytes is None or self._map_tick >= self._map_cycles:
             self._map_tick = 0
             try:
@@ -213,14 +232,130 @@ class TapoCoordinator(DataUpdateCoordinator):
         return data
 
     def _refresh_map(self) -> None:
-        current_id, _ = self.client.get_map_info()
-        map_data       = self.client.get_map_data(current_id)
-        self.map_id    = current_id
-        self.rooms     = [a for a in map_data.get("area_list", [])
-                          if a.get("type") == "room"]
+        current_id, map_list = self.client.get_map_info()
+        self.device_current_map_id = current_id
+        self.available_maps = [
+            {
+                "id": map_info["map_id"],
+                "name": _b64name(map_info.get("map_name", ""))
+                or f"Map {map_info['map_id']}",
+            }
+            for map_info in map_list
+        ]
+        available_map_ids = {map_info["id"] for map_info in self.available_maps}
+        if self.selected_map_id not in available_map_ids:
+            self.selected_map_id = None
+
+        target_map_id = self.selected_map_id or current_id
+        map_data = self.client.get_map_data(target_map_id)
+        self.map_id = target_map_id
+        self.rooms = [
+            a for a in map_data.get("area_list", []) if a.get("type") == "room"
+        ]
         self.map_image_bytes = _render_map_image(map_data)
-        _LOGGER.debug("Map rendered: %d bytes, %d rooms",
-                      len(self.map_image_bytes), len(self.rooms))
+        _LOGGER.debug(
+            "Map rendered: %d bytes, %d rooms",
+            len(self.map_image_bytes),
+            len(self.rooms),
+        )
+
+    def _bootstrap_device_context(self) -> None:
+        info = self.client.get_device_info()
+        self.device_info_raw = info
+        self.device_name = _b64name(info.get("nickname", "")) or info.get(
+            "model", "Tapo Robot Vacuum"
+        )
+        self.device_model = info.get("model", "Tapo Robot Vacuum")
+        self.component_list = self.client.get_component_list()
+        self._refresh_model_state()
+        self._device_bootstrapped = True
+
+    def _refresh_model_state(self) -> None:
+        self.task_api, self.tasks = self.client.list_tasks()
+        if self.selected_task_id is not None and not any(
+            task["id"] == self.selected_task_id for task in self.tasks
+        ):
+            self.selected_task_id = None
+        self.supported_settings = self.client.get_supported_settings()
+
+    async def async_refresh_model_state(self) -> None:
+        await self.hass.async_add_executor_job(self._refresh_model_state)
+
+    def resolve_task_live(
+        self, task_id: int | None = None, task_name: str | None = None
+    ) -> dict[str, Any]:
+        task_api, tasks = self.client.list_tasks()
+        self.task_api = task_api
+        self.tasks = tasks
+
+        if task_id is not None:
+            for task in tasks:
+                if task["id"] == task_id:
+                    return task
+            raise ValueError(f"Task id '{task_id}' not found")
+
+        if task_name is not None:
+            exact = [
+                task for task in tasks if task["name"].lower() == task_name.lower()
+            ]
+            matches = exact or [
+                task for task in tasks if task_name.lower() in task["name"].lower()
+            ]
+            if not matches:
+                available = [task["name"] for task in tasks]
+                raise ValueError(
+                    f"Task '{task_name}' not found. Available: {available}"
+                )
+            return matches[0]
+
+        raise ValueError("Either task_id or task_name is required")
+
+    def get_task_options(self) -> list[str]:
+        """Return task names for the task select entity."""
+        return [task["name"] for task in self.tasks]
+
+    def get_map_options(self) -> list[str]:
+        """Return map names for the map select entity."""
+        return [map_info["name"] for map_info in self.available_maps]
+
+    def get_selected_map_name(self) -> str | None:
+        """Return the currently selected map name for the integration."""
+        if self.map_id is None:
+            return None
+        for map_info in self.available_maps:
+            if map_info["id"] == self.map_id:
+                return map_info["name"]
+        return None
+
+    def select_map_live(self, map_name: str) -> None:
+        """Select a stored map by name and refresh the rendered map context."""
+        for map_info in self.available_maps:
+            if map_info["name"] == map_name:
+                self.selected_map_id = map_info["id"]
+                self.client.set_current_map(map_info["id"])
+                self._refresh_map()
+                return
+        raise ValueError(f"Map '{map_name}' not found")
+
+    def get_selected_task_name(self) -> str | None:
+        """Return the last selected task name if it still exists."""
+        if self.selected_task_id is None:
+            return None
+        for task in self.tasks:
+            if task["id"] == self.selected_task_id:
+                return task["name"]
+        return None
+
+    def get_setting_field_value(self, setting_key: str) -> Any:
+        value = self.supported_settings.get(setting_key)
+        if value is None:
+            return None
+
+        definition = SETTING_DEFINITIONS.get(setting_key, {})
+        field = definition.get("field")
+        if field:
+            return value.get(field)
+        return value
 
     def resolve_rooms_live(
         self, name_patterns: list[str], map_name: str | None = None
@@ -234,15 +369,18 @@ class TapoCoordinator(DataUpdateCoordinator):
 
         if map_name:
             target_id = next(
-                (m["map_id"] for m in map_list
-                 if map_name.lower() in _b64name(m.get("map_name", "")).lower()),
+                (
+                    m["map_id"]
+                    for m in map_list
+                    if map_name.lower() in _b64name(m.get("map_name", "")).lower()
+                ),
                 None,
             )
             if target_id is None:
                 available = [_b64name(m.get("map_name", "")) for m in map_list]
                 raise ValueError(f"Map '{map_name}' not found. Available: {available}")
         else:
-            target_id = current_map_id
+            target_id = self.selected_map_id or current_map_id
 
         map_data = self.client.get_map_data(target_id)
         rooms = [a for a in map_data.get("area_list", []) if a.get("type") == "room"]
@@ -252,12 +390,15 @@ class TapoCoordinator(DataUpdateCoordinator):
         for pat in name_patterns:
             decoded = [_b64name(r.get("name", "")) for r in rooms]
             exact = [r for r, n in zip(rooms, decoded) if n.lower() == pat.lower()]
-            hits = exact or [r for r, n in zip(rooms, decoded) if pat.lower() in n.lower()]
+            hits = exact or [
+                r for r, n in zip(rooms, decoded) if pat.lower() in n.lower()
+            ]
             if not hits:
                 available = [_b64name(r.get("name", "")) for r in rooms]
                 raise ValueError(f"No room matching '{pat}'. Available: {available}")
             for r in hits:
                 if r["id"] not in seen:
-                    seen.add(r["id"]); matched.append(r["id"])
+                    seen.add(r["id"])
+                    matched.append(r["id"])
 
         return matched, target_id

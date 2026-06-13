@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -74,10 +75,10 @@ _AREA_SENSOR = TapoSensorDescription(
 def _consumable_descriptions() -> list[TapoSensorDescription]:
     descs = []
     icons = {
-        "roll_brush_time":     "mdi:brush",
-        "edge_brush_time":     "mdi:rotate-right",
-        "filter_time":         "mdi:air-filter",
-        "sensor_time":         "mdi:eye",
+        "roll_brush_time": "mdi:brush",
+        "edge_brush_time": "mdi:rotate-right",
+        "filter_time": "mdi:air-filter",
+        "sensor_time": "mdi:eye",
         "charge_contact_time": "mdi:lightning-bolt",
     }
     for key, label in CONSUMABLE_LABELS.items():
@@ -129,7 +130,7 @@ class TapoStatusSensor(CoordinatorEntity[TapoCoordinator], SensorEntity):
             "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name":        self.coordinator.device_name,
             "manufacturer":"TP-Link",
-            "model":       "Tapo RV30 Max Plus",
+            "model":       self.coordinator.device_model,
         }
 
     @property
@@ -142,6 +143,7 @@ class TapoStatusSensor(CoordinatorEntity[TapoCoordinator], SensorEntity):
 
 class TapoConsumableSensor(CoordinatorEntity[TapoCoordinator], SensorEntity):
     """Sensor showing hours remaining on a consumable part."""
+
     _attr_has_entity_name            = True
     _attr_native_unit_of_measurement = UnitOfTime.HOURS
     _attr_state_class                = SensorStateClass.MEASUREMENT
@@ -161,7 +163,7 @@ class TapoConsumableSensor(CoordinatorEntity[TapoCoordinator], SensorEntity):
             "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name":        self.coordinator.device_name,
             "manufacturer":"TP-Link",
-            "model":       "Tapo RV30 Max Plus",
+            "model":       self.coordinator.device_model,
         }
 
     @property

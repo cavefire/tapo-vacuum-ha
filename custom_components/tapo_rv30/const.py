@@ -7,13 +7,42 @@ CONF_PASSWORD = "password"
 CONF_PORT     = "port"
 DEFAULT_PORT  = 4433
 
-FAST_INTERVAL = 30   # seconds — status / battery / attrs
-MAP_INTERVAL  = 300  # seconds — map image re-render
+FAST_INTERVAL    = 30  # seconds — status / battery / attrs
+MAP_INTERVAL     = 10  # seconds — map image re-render
+FEATURE_INTERVAL = 60  # seconds — task/settings capability refresh
+
+SERVICE_CLEAN_ROOMS = "clean_rooms"
+SERVICE_DELETE_TASK = "delete_task"
+SERVICE_REORDER_TASKS = "reorder_tasks"
+SERVICE_SAVE_TASK = "save_task"
+SERVICE_SET_ROBOT_SETTING = "set_robot_setting"
+SERVICE_START_TASK = "start_task"
+
+BOOL_SETTING_ENTITIES = {
+    "ai_avoid": {"name": "AI Avoid", "icon": "mdi:radar"},
+    "automatic_remopping": {"name": "Automatic Remopping", "icon": "mdi:autorenew"},
+    "carpet_auto_boost": {"name": "Carpet Auto Boost", "icon": "mdi:rug"},
+    "child_lock": {"name": "Child Lock", "icon": "mdi:lock"},
+    "clean_along_floor": {"name": "Clean Along Floor", "icon": "mdi:floor-plan"},
+    "extended_mopping": {"name": "Extended Mopping", "icon": "mdi:water-plus"},
+    "pet_area_deep_switch": {"name": "Pet Area Deep Clean", "icon": "mdi:paw"},
+    "sweep_walk": {"name": "Sweep Walk", "icon": "mdi:motion-sensor"},
+}
+
+NUMBER_SETTING_ENTITIES = {
+    "volume": {
+        "name": "Volume",
+        "icon": "mdi:volume-high",
+        "min": 0,
+        "max": 100,
+        "step": 1,
+    },
+}
 
 VACUUM_STATES = {
     0:   "idle",
     1:   "cleaning",
-    2:   "cleaning",   # mapping counts as cleaning
+    2:   "cleaning",  # mapping counts as cleaning
     4:   "returning",
     5:   "docked",
     6:   "docked",
@@ -68,6 +97,6 @@ ROOM_PALETTE = [
     (255, 220, 186),  # pastel orange
     (186, 255, 255),  # pastel cyan
 ]
-WALL_COLOR    = (60,  60,  60)
+WALL_COLOR    = (60, 60, 60)
 UNKNOWN_COLOR = (210, 210, 210)
 FLOOR_COLOR   = (240, 240, 240)

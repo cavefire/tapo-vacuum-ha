@@ -63,7 +63,7 @@ class TapoVacuumEntity(CoordinatorEntity[TapoCoordinator], StateVacuumEntity):
             "identifiers": {(DOMAIN, self._entry.entry_id)},
             "name":        self.coordinator.device_name,
             "manufacturer":"TP-Link",
-            "model":       "Tapo RV30 Max Plus",
+            "model":       self.coordinator.device_model,
         }
 
     @property
@@ -94,9 +94,17 @@ class TapoVacuumEntity(CoordinatorEntity[TapoCoordinator], StateVacuumEntity):
             "clean_passes":  d.get("clean_number", 1),
             "mop_attached":  d.get("mop_attached", False),
             "clean_area":    d.get("clean_area", 0),
-            "clean_time_min":d.get("clean_time", 0),
+            "clean_time_min": d.get("clean_time", 0),
             "clean_percent": d.get("clean_percent", 0),
+            "selected_map": self.coordinator.get_selected_map_name(),
+            "selected_map_id": self.coordinator.map_id,
+            "device_current_map_id": self.coordinator.device_current_map_id,
+            "available_maps": self.coordinator.available_maps,
             "rooms":         rooms,
+            "task_api":      self.coordinator.task_api,
+            "tasks":         self.coordinator.tasks,
+            "settings":      self.coordinator.supported_settings,
+            "components":    self.coordinator.component_list,
             "integration":   DOMAIN,
         }
 
